@@ -1,0 +1,92 @@
+// 선생님의 스프레드시트 ID (URL에서 추출)
+const SHEET_ID = '스프레드시트 ID 입력하기';
+
+/**
+ * 1. 웹 앱 최초 접속 시 실행되는 함수
+ * index.html 파일을 렌더링하여 화면에 보여줍니다.
+ */
+function doGet(e) {
+  return HtmlService.createHtmlOutputFromFile('index')
+    .setTitle('상벌점 은행 시스템')
+    .addMetaTag('viewport', 'width=device-width, initial-scale=1'); // 모바일 반응형 메타태그
+}
+
+/**
+ * 2. 학생 목록 및 현재 점수 가져오기 (학생명부 시트)
+ */
+function getStudentList() {
+  const sheet = SpreadsheetApp.openById(SHEET_ID).getSheetByName('학생명부');
+  const data = sheet.getDataRange().getValues();
+  const result = [];
+  
+  // 첫 번째 줄(머리글)을 제외하고 2번째 줄(인덱스 1)부터 데이터 읽기
+  for (let i = 1; i < data.length; i++) {
+    if (data[i][0]) { // 학번이 비어있지 않은 경우만
+      result.push({
+        id: data[i][0],      // A열: 학번
+        name: data[i][1],    // B열: 이름
+        score: data[i][2] || 0 // C열: 현재 점수 (값이 없으면 0)
+      });
+    }
+  }
+  return result;
+}
+
+/**
+ * 3. 상벌점 내역 추가하기 (상벌점내역 시트)
+ */
+function addTransaction(formData) {
+  const sheet = SpreadsheetApp.openById(SHEET_ID).getSheetByName('상벌점내역');
+  const timestamp = new Date(); // 타임스탬프 (입력한 현재 시간)
+
+  // 점수 계산 로직: 벌점(출금)일 경우 음수(-)로 변환
+  let finalScore = Number(formData.score);
+  if (formData.type === '벌점(출금)' && finalScore > 0) {
+    finalScore = -finalScore;
+  }
+
+  // 기획서의 머리글 순서에 맞게 데이터 행 추가
+  // A:타임스탬프, B:날짜, C:학번, D:이름, E:구분, F:내용(사유), G:점수
+  sheet.appendRow([
+    timestamp,
+    formData.date,
+    formData.studentId,
+    formData.studentName,
+    formData.type,
+    formData.reason,
+    finalScore
+  ]);
+  
+  return true; // 성공 반환
+}
+
+/**
+ * 4. 특정 학생의 상벌점 상세 내역 가져오기 (상벌점내역 시트)
+ */
+function getStudentHistory(studentId) {
+  const sheet = SpreadsheetApp.openById(SHEET_ID).getSheetByName('상벌점내역');
+  const data = sheet.getDataRange().getValues();
+  const result = [];
+  
+  for (let i = 1; i < data.length; i++) {
+    // C열(인덱스 2)의 학번과 일치하는 데이터만 필터링
+    if (String(data[i][2]) === String(studentId)) {
+      
+      // 날짜 객체를 보기 좋은 문자열로 포맷팅 (예: 2026-03-16)
+      let formattedDate = data[i][1];
+      if (formattedDate instanceof Date) {
+        formattedDate = Utilities.formatDate(formattedDate, Session.getScriptTimeZone(), "yyyy-MM-dd");
+      }
+
+      result.push({
+        date: formattedDate,   // B열: 날짜
+        type: data[i][4],      // E열: 구분
+        reason: data[i][5],    // F열: 내용
+        score: data[i][6]      // G열: 점수
+      });
+    }
+  }
+  
+  // 최신 내역이 위로 오도록 배열을 뒤집어서 반환
+  return result.reverse();
+}
